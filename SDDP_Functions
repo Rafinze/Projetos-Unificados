@@ -1,0 +1,89 @@
+using SDDP, Gurobi
+
+function subproblem_builder(subproblem::Model, node::Int)
+    max_hidro = 200
+    max_termo = 200
+    vert_max = 100
+    vol_max = 200
+    demanda = 150
+    volume_inicial = 200
+    custo_termo = [100,50,120,60]
+
+    # State variables
+    @variable(subproblem, 0 <= V <= vol_max, SDDP.State, initial_value = volume_inicial)
+
+    # Control variables    
+    @variables(subproblem, 
+        begin
+            0 <= H <= max_hidro
+            0 <= T <= max_termo
+        end
+    )
+
+    # Random variables
+    @variable(subproblem, Chuva)
+    Ω = [25.0, 50.0, 75.0, 100.0]
+    P = [1 /4, 1/4, 1 / 4, 1 / 4]
+    SDDP.parameterize(subproblem, Ω, P) do ω # recebe três argumentos: o ambiente a ser analizado(subproblem), um vetor contendo o espaço amostral (Ω) e um vetor de probabilidades (P). SDDP.parameterize só pode ser chamado uma vez
+        return JuMP.fix(Chuva, ω) #utilizamos para definir o valor da variável "chuva" com os valores gerados de ω
+    end
+
+    # Constraints
+    @constraints(subproblem, 
+        begin
+            H + T >= demanda
+            V.out == V.in - H + Chuva # Utilizamos V.out e V.in para referir a entrada e saida de uma variável de estado
+        end
+    ) 
+
+    # Objective
+    @stageobjective(subproblem, custo_termo[node] * T)
+    return subproblem
+ end
+
+
+ model = SDDP.LinearPolicyGraph(
+    subproblem_builder;
+    stages = 4,
+    sense = :Min,
+    lower_bound = 0.0,
+    optimizer = Gurobi.Optimizer,
+)
+
+    
+
+# Treinamento do modelo
+SDDP.train(model; iteration_limit = 10)
+
+rule = SDDP.DecisionRule(model; node = 1)
+
+# solution = SDDP.evaluate(
+#     rule;
+#     incoming_state = Dict(:V => 150.0),
+#     noise = 50.0,
+#     controls_to_record = [:H, :T],
+# )
+
+# # Simulação do modelo
+# simulations = SDDP.simulate(
+#     model,
+#     100,
+#     [:V, :H, :T],
+# )
+
+# volume_final = map(simulations[1]) do node
+#     return node[:V].out
+# end
+
+# producao_termicas = map(simulations[1]) do node
+#     return node[:T]
+# end
+
+# # Processamento dos resultados das simulações
+# objectives = map(simulations) do simulation
+#     return sum(stage[:stage_objective] for stage in simulation)
+# end
+
+# μ, ci = SDDP.confidence_interval(objectives)
+# println("Confidence interval: ", μ, " ± ", ci)
+# println("Lower bound: ", SDDP.calculate_bound(model))
