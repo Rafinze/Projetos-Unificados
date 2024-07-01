@@ -100,7 +100,6 @@ println("Preços de dual da restrição de demanda: ", prices)
 # Avaliando o valor da função em diferentes pontos no espaço de estados
 Vol = SDDP.ValueFunction(model; node = 1)
 
-# Corrigindo a avaliação com base nos nomes das variáveis de estado
 state_point = Dict(
     :V1 => 10.0, 
     :V2 => 10.0, 
